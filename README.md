@@ -14,7 +14,7 @@ A modern, scalable Discord bot template built with Java and Discord4J.
 1. **Use this repository as a template.**
 
 2. **Configure the bot:**
-   - Edit the `config.yaml` file with your bot token and other settings.
+   - Edit the `config.yml` file with your bot token and other settings.
 
 3. **Build and run the bot:**
    ```bash
