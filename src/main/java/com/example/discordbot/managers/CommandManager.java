@@ -45,16 +45,13 @@ public class CommandManager {
                 String name = info.getName();
 
                 if (groups.isEmpty()) {
-                    // /ping
                     standalone.put(name, handler);
 
                 } else if (groups.size() == 1) {
-                    // /group ping
                     String grp = groups.get(0);
                     groupSubs.computeIfAbsent(grp, k -> new ArrayList<>()).add(handler);
 
                 } else {
-                    // /group subgroup ping
                     String grp = groups.get(0), sub = groups.get(1);
                     subgroupSubs
                             .computeIfAbsent(grp, k -> new HashMap<>())
@@ -67,7 +64,6 @@ public class CommandManager {
             }
         }
 
-        // log
         Constants.LOG.info("Standalone: {}", standalone.keySet());
         groupSubs.forEach((g, list) ->
                 Constants.LOG.info("Group '{}': {}", g,
@@ -80,7 +76,6 @@ public class CommandManager {
                 )
         );
 
-        // on Ready → register with Discord
         client.on(ReadyEvent.class, ev ->
                 client.getRestClient().getApplicationId()
                         .flatMapMany(appId ->
