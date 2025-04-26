@@ -1,0 +1,10 @@
+bot:
+  isDevEnv: true
+  productionToken: ""
+  developmentToken: ""
+
+applicationCategoryId: ""
+
+database:
+  mongoUrl: ""
+  name: ""
