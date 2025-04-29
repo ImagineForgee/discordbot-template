@@ -1,4 +1,4 @@
-package com.example.discordbot.commands.impl.taxpayers;
+package com.example.discordbot.commands.impl.example;
 
 import com.example.discordbot.commands.CommandHandler;
 import com.github.clawsoftsolutions.purrfectlib.annotations.Command;

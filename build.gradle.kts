@@ -19,7 +19,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("org.reflections:reflections:0.10.2")
-    implementation("com.github.clawsoftsolutions.purrfectlib:javautils:0.0.2")
+    implementation("com.github.clawsoftsolutions.purrfectlib:javautils:0.0.4")
     implementation("org.mongojack:mongojack:5.0.2")
 }
 

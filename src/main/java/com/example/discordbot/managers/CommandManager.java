@@ -4,6 +4,8 @@ import com.example.discordbot.Constants;
 import com.example.discordbot.commands.CommandGroup;
 import com.example.discordbot.commands.CommandHandler;
 import com.github.clawsoftsolutions.purrfectlib.annotations.Command;
+import com.github.clawsoftsolutions.purrfectlib.enums.OptionType;
+import com.github.clawsoftsolutions.purrfectlib.manager.AbstractCommandManager;
 import com.github.clawsoftsolutions.purrfectlib.scanner.CommandInfo;
 import com.github.clawsoftsolutions.purrfectlib.scanner.CommandScanner;
 import discord4j.core.GatewayDiscordClient;
@@ -20,12 +22,13 @@ import reactor.core.publisher.Mono;
 
 import java.util.*;
 
-public class CommandManager {
+public class CommandManager extends AbstractCommandManager {
 
     private final Map<String, CommandHandler> standalone = new HashMap<>();
     private final Map<String, List<CommandHandler>> groupSubs = new HashMap<>();
     private final Map<String, Map<String, List<CommandHandler>>> subgroupSubs = new HashMap<>();
     private static final Map<String, CommandGroup> groupPermissions = new HashMap<>();
+    private static final EnumMap<OptionType, ApplicationCommandOption.Type> OPTION_TYPE_MAP = new EnumMap<>(OptionType.class);
 
     public CommandManager(GatewayDiscordClient client) {
         long start = System.currentTimeMillis();
@@ -33,8 +36,20 @@ public class CommandManager {
         Constants.LOG.info("Commands loaded in {}ms", System.currentTimeMillis() - start);
     }
 
+    static {
+        OPTION_TYPE_MAP.put(OptionType.STRING, ApplicationCommandOption.Type.STRING);
+        OPTION_TYPE_MAP.put(OptionType.INTEGER, ApplicationCommandOption.Type.INTEGER);
+        OPTION_TYPE_MAP.put(OptionType.BOOLEAN, ApplicationCommandOption.Type.BOOLEAN);
+        OPTION_TYPE_MAP.put(OptionType.USER, ApplicationCommandOption.Type.USER);
+        OPTION_TYPE_MAP.put(OptionType.CHANNEL, ApplicationCommandOption.Type.CHANNEL);
+        OPTION_TYPE_MAP.put(OptionType.ROLE, ApplicationCommandOption.Type.ROLE);
+        OPTION_TYPE_MAP.put(OptionType.MENTIONABLE, ApplicationCommandOption.Type.MENTIONABLE);
+        OPTION_TYPE_MAP.put(OptionType.NUMBER, ApplicationCommandOption.Type.NUMBER);
+        OPTION_TYPE_MAP.put(OptionType.ATTACHMENT, ApplicationCommandOption.Type.ATTACHMENT);
+    }
+
     private void registerCommands(GatewayDiscordClient client) {
-        CommandScanner scanner = new CommandScanner("com.example.discordbot.commands.impl");
+        CommandScanner scanner = new CommandScanner("com.github.clawsoftsolutions.discordbot.commands.impl");
         List<CommandInfo> infos = scanner.scanCommands();
 
         for (CommandInfo info : infos) {
@@ -45,16 +60,13 @@ public class CommandManager {
                 String name = info.getName();
 
                 if (groups.isEmpty()) {
-                    // /ping
                     standalone.put(name, handler);
 
                 } else if (groups.size() == 1) {
-                    // /group ping
                     String grp = groups.get(0);
                     groupSubs.computeIfAbsent(grp, k -> new ArrayList<>()).add(handler);
 
                 } else {
-                    // /group subgroup ping
                     String grp = groups.get(0), sub = groups.get(1);
                     subgroupSubs
                             .computeIfAbsent(grp, k -> new HashMap<>())
@@ -67,7 +79,6 @@ public class CommandManager {
             }
         }
 
-        // log
         Constants.LOG.info("Standalone: {}", standalone.keySet());
         groupSubs.forEach((g, list) ->
                 Constants.LOG.info("Group '{}': {}", g,
@@ -80,7 +91,6 @@ public class CommandManager {
                 )
         );
 
-        // on Ready → register with Discord
         client.on(ReadyEvent.class, ev ->
                 client.getRestClient().getApplicationId()
                         .flatMapMany(appId ->
@@ -95,13 +105,24 @@ public class CommandManager {
     private List<ApplicationCommandRequest> createCommandRequests() {
         List<ApplicationCommandRequest> reqs = new ArrayList<>();
 
-        // 1) Standalone
         standalone.forEach((name, handler) -> {
             Command ann = handler.getClass().getAnnotation(Command.class);
-            reqs.add(ApplicationCommandRequest.builder()
+
+            ImmutableApplicationCommandRequest.Builder builder = ApplicationCommandRequest.builder()
                     .name(name)
-                    .description(ann.description())
-                    .build());
+                    .description(ann.description());
+
+            for (var opt : ann.options()) {
+                ApplicationCommandOption.Type optionType = (ApplicationCommandOption.Type) map(opt.type());
+                builder.addOption(ApplicationCommandOptionData.builder()
+                        .name(opt.name())
+                        .description(opt.description())
+                        .type(optionType.getValue())
+                        .required(opt.required())
+                        .build());
+            }
+
+            reqs.add(builder.build());
         });
 
         Set<String> allGroups = new HashSet<>();
@@ -116,11 +137,22 @@ public class CommandManager {
             List<CommandHandler> direct = groupSubs.getOrDefault(grp, List.of());
             for (CommandHandler h : direct) {
                 Command ann = h.getClass().getAnnotation(Command.class);
-                b.addOption(ApplicationCommandOptionData.builder()
+                ImmutableApplicationCommandOptionData.Builder subCmdBuilder = ApplicationCommandOptionData.builder()
                         .name(ann.name())
                         .description(ann.description())
-                        .type(1)
-                        .build());
+                        .type(ApplicationCommandOption.Type.SUB_COMMAND.getValue());
+
+                for (var opt : ann.options()) {
+                    ApplicationCommandOption.Type optionType = (ApplicationCommandOption.Type) map(opt.type());
+                    subCmdBuilder.addOption(ApplicationCommandOptionData.builder()
+                            .name(opt.name())
+                            .description(opt.description())
+                            .type(optionType.getValue())
+                            .required(opt.required())
+                            .build());
+                }
+
+                b.addOption(subCmdBuilder.build());
             }
 
             Map<String, List<CommandHandler>> subs = subgroupSubs.getOrDefault(grp, Map.of());
@@ -129,20 +161,28 @@ public class CommandManager {
                 ImmutableApplicationCommandOptionData.Builder sg = ApplicationCommandOptionData.builder()
                         .name(subGrp)
                         .description("Subgroup: " + subGrp)
-                        .type(2);
+                        .type(ApplicationCommandOption.Type.SUB_COMMAND_GROUP.getValue()); // 2 = SUB_COMMAND_GROUP
 
                 for (CommandHandler h : entry.getValue()) {
                     Command ann = h.getClass().getAnnotation(Command.class);
-                    sg.addOption(ApplicationCommandOptionData.builder()
+                    ImmutableApplicationCommandOptionData.Builder subCmdBuilder = ApplicationCommandOptionData.builder()
                             .name(ann.name())
                             .description(ann.description())
-                            .type(1)
-                            .build());
-                }
+                            .type(ApplicationCommandOption.Type.SUB_COMMAND.getValue()); // 1 = SUB_COMMAND
 
+                    for (var opt : ann.options()) {
+                        ApplicationCommandOption.Type optionType = (ApplicationCommandOption.Type) map(opt.type());
+                        subCmdBuilder.addOption(ApplicationCommandOptionData.builder()
+                                .name(opt.name())
+                                .description(opt.description())
+                                .type(optionType.getValue())
+                                .required(opt.required())
+                                .build());
+                    }
+                    sg.addOption(subCmdBuilder.build());
+                }
                 b.addOption(sg.build());
             }
-
             reqs.add(b.build());
         }
 
@@ -201,6 +241,11 @@ public class CommandManager {
 
     public static void registerGroupPermission(String group, List<Permission> perms) {
         groupPermissions.put(group, new CommandGroup(group, perms));
+    }
+
+    @Override
+    protected Object map(OptionType type) {
+        return OPTION_TYPE_MAP.get(type);
     }
 }
 
